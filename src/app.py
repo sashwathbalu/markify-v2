@@ -7,6 +7,7 @@ import hashlib
 import pandas as pd
 import plotly.express as px
 import datetime
+import json
 
 # --- Session-State Trigger for Auto-refresh ---
 if "refresh_trigger" not in st.session_state:
@@ -14,8 +15,11 @@ if "refresh_trigger" not in st.session_state:
 
 # --- Firebase Initialization ---
 if not firebase_admin._apps:
-    cred = credentials.Certificate("src/markify-firebase.json")
+    # Parse the JSON string from Streamlit Secrets
+    firebase_key_dict = json.loads(st.secrets["firebase"]["key"])
+    cred = credentials.Certificate(firebase_key_dict)
     firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
 # --- Utility Functions ---
