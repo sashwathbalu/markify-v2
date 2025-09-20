@@ -14,9 +14,10 @@ if "refresh_trigger" not in st.session_state:
     st.session_state["refresh_trigger"] = 0
 
 # --- Firebase Initialization ---
+import os
+
 if not firebase_admin._apps:
-    # Parse the JSON string from Streamlit Secrets
-    firebase_key_dict = json.loads(st.secrets["firebase"]["key"])
+    firebase_key_dict = json.loads(os.environ["FIREBASE_KEY"])
     cred = credentials.Certificate(firebase_key_dict)
     firebase_admin.initialize_app(cred)
 
