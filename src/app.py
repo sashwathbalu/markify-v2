@@ -658,6 +658,53 @@ def account_settings():
             st.error("Current password is incorrect.")
 
 # --- Main App Flow ---
+def edit_marks_page():
+    st.title("✏️ Edit or Delete Marks")
+    student_uid = st.session_state["uid"]
+    all_exams = get_exams_for_student(student_uid)
+    if not all_exams:
+        st.info("No exams found. Enter marks in the dashboard first.")
+        return
+    # Select Exam/Test
+    exam_names = sorted(set([ename for _, ename, _, _ in all_exams]))
+    selected_exam = st.selectbox("Select Exam/Test", exam_names, key="edit_exam_select")
+    # Select Exam Type for selected exam
+    exam_types = sorted(set([etype for eid, ename, edate, etype in all_exams if ename==selected_exam]))
+    selected_type = st.selectbox("Select Exam Type", exam_types, key="edit_exam_type_select")
+    # Get exam IDs matching selection
+    matching_exams = [(eid, edate) for eid, ename, edate, etype in all_exams if ename==selected_exam and etype==selected_type]
+    if not matching_exams:
+        st.info("No matching exam instances found.")
+        return
+    eid, edate = matching_exams[-1]  # take the latest
+    marks_dict = get_marks_for_student_exam(eid, student_uid)
+    if not marks_dict:
+        st.info("No marks found for this exam.")
+        return
+    # Display subjects and allow edit/delete
+    for subject, v in marks_dict.items():
+        col1, col2, col3, col4 = st.columns([2,2,2,1])
+        with col1:
+            st.markdown(f"**{subject}**")
+        with col2:
+            new_mark = st.number_input(f"Marks ({subject})", min_value=0.0, max_value=1000.0, step=0.1, format="%.2f", value=v["mark"], key=f"mark_{subject}")
+        with col3:
+            new_total = st.number_input(f"Total Marks ({subject})", min_value=1.0, max_value=1000.0, step=0.1, format="%.2f", value=v["total_mark"], key=f"total_{subject}")
+        with col4:
+            delete_btn = st.button(f"Delete {subject}", key=f"delete_{subject}")
+            if delete_btn:
+                db.collection("exams").document(eid).collection("marks").document(f"{student_uid}_{subject}").delete()
+                st.success(f"Deleted {subject} mark.")
+                st.experimental_rerun()
+        # Update button
+        if st.button(f"Update {subject}", key=f"update_{subject}"):
+            db.collection("exams").document(eid).collection("marks").document(f"{student_uid}_{subject}").update({
+                "mark": new_mark,
+                "total_mark": new_total
+            })
+            st.success(f"Updated {subject} mark.")
+            st.experimental_rerun()
+
 def main():
     st.set_page_config(page_title="Markify v2", layout="wide")
     st.sidebar.title("Markify")
@@ -681,6 +728,7 @@ def main():
         st.sidebar.markdown("### 📂 Navigation")
         if is_admin(st.session_state["uid"]):
             sidebar_tabs.append("🛠️ Admin Panel")
+        sidebar_tabs.append("✏️ Edit/Delete Marks")
         sidebar_tabs.append("🚪 Logout")
         page = st.sidebar.radio("Navigate", sidebar_tabs)
         st.sidebar.divider()
@@ -694,6 +742,7 @@ def main():
         "📈 Statistics & Improvement": statistics_improvement_page,
         "⚙️ Account Settings": account_settings,
         "🛠️ Admin Panel": admin_panel,
+        "✏️ Edit/Delete Marks": edit_marks_page,
         "🚪 Logout": None,
         "🔑 Login": login_page,
         "📝 Sign Up": signup_page,
