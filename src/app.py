@@ -371,7 +371,6 @@ def dashboard_page():
                                     db.collection("exams").document(eid).delete()
                                     st.success(f"Deleted exam '{ename}' ({etype})")
                                     st.session_state["refresh_trigger"] += 1
-                                    st.experimental_rerun()
                         # Show details in expander for each exam instance
                         with st.expander(f"Details: {edate.strftime('%Y-%m-%d %H:%M') if edate else 'No Date'}"):
                             df = pd.DataFrame(df_rows)
