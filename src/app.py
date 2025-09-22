@@ -709,7 +709,6 @@ def main():
         st.sidebar.markdown("### 📂 Navigation")
         if is_admin(st.session_state["uid"]):
             sidebar_tabs.append("🛠️ Admin Panel")
-        sidebar_tabs.append("✏️ Edit/Delete Marks")
         sidebar_tabs.append("🚪 Logout")
         page = st.sidebar.radio("Navigate", sidebar_tabs)
         st.sidebar.divider()
@@ -723,7 +722,6 @@ def main():
         "📈 Statistics & Improvement": statistics_improvement_page,
         "⚙️ Account Settings": account_settings,
         "🛠️ Admin Panel": admin_panel,
-        "✏️ Edit/Delete Marks": edit_marks_page,
         "🚪 Logout": None,
         "🔑 Login": login_page,
         "📝 Sign Up": signup_page,
