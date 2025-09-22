@@ -246,7 +246,7 @@ def dashboard_page():
     st.title(f"🏠 Dashboard - Welcome {st.session_state['name']}")
     with st.container():
         st.markdown("### 📝 Enter Exam/Test Details")
-        col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 1, 1])
+        col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 1, 1, 2])
         with col1:
             exam_name = st.text_input("**Exam/Test Name**", key="v2_exam_name")
         with col2:
@@ -261,6 +261,8 @@ def dashboard_page():
             mark_input = st.number_input("**Marks**", min_value=0.0, max_value=1000.0, step=0.1, format="%.2f", key="v2_marks_input")
         with col5:
             total_marks_input = st.number_input("**Total Marks**", min_value=1.0, max_value=1000.0, step=0.1, value=100.0, format="%.2f", key="v2_total_marks_input")
+        with col6:
+            exam_date_input = st.date_input("Exam Date", value=datetime.date.today(), key="v2_exam_date")
         st.markdown("")
         submit_col, _ = st.columns([1, 6])
         with submit_col:
@@ -270,7 +272,7 @@ def dashboard_page():
             if not exam_name.strip():
                 st.warning("Exam/Test name cannot be empty.")
             else:
-                now_dt = datetime.datetime.now()
+                now_dt = datetime.datetime.combine(exam_date_input, datetime.datetime.min.time())
                 eid = exam_id_from_fields(exam_name, exam_type, student_uid, now_dt)
                 try:
                     # Create exam if it doesn't exist
@@ -351,6 +353,14 @@ def dashboard_page():
                             col_edit, col_delete = st.columns([1,1])
                             with col_edit:
                                 if st.button(f"Edit Marks - {eid}", key=f"edit_{eid}"):
+                                    # Edit exam date
+                                    new_date = st.date_input(f"Exam Date - {ename} ({etype})", value=edate.date() if edate else datetime.date.today(), key=f"date_{eid}")
+                                    if st.button(f"Update Exam Date - {eid}", key=f"update_date_{eid}"):
+                                        db.collection("exams").document(eid).update({
+                                            "date": datetime.datetime.combine(new_date, datetime.datetime.min.time())
+                                        })
+                                        st.success(f"Updated exam date for {ename} ({etype})")
+                                        st.session_state["refresh_trigger"] += 1
                                     for subject, v in marks_dict.items():
                                         new_mark = st.number_input(f"Marks ({subject})", min_value=0.0, max_value=1000.0, step=0.1, format="%.2f", value=v["mark"], key=f"{eid}_mark_{subject}")
                                         new_total = st.number_input(f"Total Marks ({subject})", min_value=1.0, max_value=1000.0, step=0.1, format="%.2f", value=v["total_mark"], key=f"{eid}_total_{subject}")
