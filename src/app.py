@@ -258,9 +258,9 @@ def dashboard_page():
                 return
             subject_selected = st.selectbox("**Subject**", all_subjects, key="v2_subject_select")
         with col4:
-            mark_input = st.number_input("**Marks**", min_value=0, max_value=1000, step=1, key="v2_marks_input")
+            mark_input = st.number_input("**Marks**", min_value=0.0, max_value=1000.0, step=0.1, format="%.2f", key="v2_marks_input")
         with col5:
-            total_marks_input = st.number_input("**Total Marks**", min_value=1, max_value=1000, step=1, value=100, key="v2_total_marks_input")
+            total_marks_input = st.number_input("**Total Marks**", min_value=1.0, max_value=1000.0, step=0.1, value=100.0, format="%.2f", key="v2_total_marks_input")
         st.markdown("")
         submit_col, _ = st.columns([1, 6])
         with submit_col:
