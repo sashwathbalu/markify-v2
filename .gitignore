@@ -1,2 +1,3 @@
 markify-firebase.json
 .streamlit/secrets.toml
+src/Firebase_key.json
