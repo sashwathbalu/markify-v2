@@ -272,12 +272,21 @@ def dashboard_page():
             else:
                 now_dt = datetime.datetime.now()
                 eid = exam_id_from_fields(exam_name, exam_type, student_uid, now_dt)
-                exam_doc = db.collection("exams").document(eid).get()
                 try:
+                    # Create exam if it doesn't exist
+                    exam_doc = db.collection("exams").document(eid).get()
                     if not exam_doc.exists:
                         create_exam(exam_name, exam_type, now_dt, student_uid)
-                    add_mark(eid, student_uid, subject_selected, mark_input, total_marks_input)
-                    st.success(f"Marks submitted for {subject_selected} in '{exam_name}' ({exam_type}).")
+                    # Check if mark already exists
+                    marks_col = get_marks_collection(eid)
+                    doc_id = f"{student_uid}_{subject_selected}"
+                    marks_col.document(doc_id).set({
+                        "uid": student_uid,
+                        "subject": subject_selected,
+                        "mark": mark_input,
+                        "total_mark": total_marks_input
+                    })
+                    st.success(f"Marks for {subject_selected} in '{exam_name}' ({exam_type}) submitted/updated successfully.")
                     st.session_state["refresh_trigger"] += 1
                 except Exception as e:
                     st.error(str(e))
@@ -322,11 +331,18 @@ def dashboard_page():
                         total_obtained = sum(obtained_marks)
                         total_possible = sum(total_marks_list)
                         percentage = (total_obtained / total_possible) * 100 if total_possible > 0 else 0
+                        # --- Pass/Fail per subject ---
+                        pass_fail_dict = {}
+                        for subj, v in marks_dict.items():
+                            m = v.get("mark", 0)
+                            t = v.get("total_mark", 100)
+                            pct = (m / t) * 100 if t > 0 else 0
+                            pass_fail_dict[subj] = "Pass ✅" if pct >= 35 else "Fail ❌"
                         # Display as a row
                         col_exam, col_type, col_subject, col_marks, col_total = st.columns([2, 1, 2, 1, 1])
                         col_exam.markdown(f"{ename}<br><sub>{edate.strftime('%Y-%m-%d %H:%M') if edate else 'No Date'}</sub>", unsafe_allow_html=True)
                         col_type.markdown(f"{etype}")
-                        col_subject.markdown(", ".join(subjects))
+                        col_subject.markdown(", ".join([f"{s} ({pass_fail_dict[s]})" for s in subjects]))
                         col_marks.markdown(", ".join(marks_list))
                         col_total.markdown(", ".join(total_list))
                         # Show details in expander for each exam instance
