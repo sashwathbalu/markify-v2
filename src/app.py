@@ -304,12 +304,13 @@ def dashboard_page():
         for (ename, etype), exams_list in grouped.items():
             with st.expander(f"**{ename}** ({etype})", expanded=False):
                 # Table header using columns
-                col_exam, col_type, col_subject, col_marks, col_total = st.columns([2, 1, 2, 1, 1])
+                col_exam, col_type, col_subject, col_marks, col_total, col_editdel = st.columns([2, 1, 2, 1, 1, 2])
                 col_exam.markdown("**Exam Name**")
                 col_type.markdown("**Type**")
                 col_subject.markdown("**Subjects**")
                 col_marks.markdown("**Marks**")
                 col_total.markdown("**Total Marks**")
+                col_editdel.markdown("**Edit/Delete**")
                 for eid, edate in sorted(exams_list, key=lambda x: x[1] if x[1] else datetime.datetime.min):
                     marks_dict = get_marks_for_student_exam(eid, student_uid)
                     if marks_dict:
@@ -339,12 +340,38 @@ def dashboard_page():
                             pct = (m / t) * 100 if t > 0 else 0
                             pass_fail_dict[subj] = "Pass ✅" if pct >= 35 else "Fail ❌"
                         # Display as a row
-                        col_exam, col_type, col_subject, col_marks, col_total = st.columns([2, 1, 2, 1, 1])
+                        col_exam, col_type, col_subject, col_marks, col_total, col_editdel = st.columns([2, 1, 2, 1, 1, 2])
                         col_exam.markdown(f"{ename}<br><sub>{edate.strftime('%Y-%m-%d %H:%M') if edate else 'No Date'}</sub>", unsafe_allow_html=True)
                         col_type.markdown(f"{etype}")
                         col_subject.markdown(", ".join([f"{s} ({pass_fail_dict[s]})" for s in subjects]))
                         col_marks.markdown(", ".join(marks_list))
                         col_total.markdown(", ".join(total_list))
+                        # Edit/Delete column
+                        with col_editdel:
+                            col_edit, col_delete = st.columns([1,1])
+                            with col_edit:
+                                if st.button(f"Edit Marks - {eid}", key=f"edit_{eid}"):
+                                    for subject, v in marks_dict.items():
+                                        new_mark = st.number_input(f"Marks ({subject})", min_value=0.0, max_value=1000.0, step=0.1, format="%.2f", value=v["mark"], key=f"{eid}_mark_{subject}")
+                                        new_total = st.number_input(f"Total Marks ({subject})", min_value=1.0, max_value=1000.0, step=0.1, format="%.2f", value=v["total_mark"], key=f"{eid}_total_{subject}")
+                                        if st.button(f"Update {subject} - {eid}", key=f"update_{eid}_{subject}"):
+                                            db.collection("exams").document(eid).collection("marks").document(f"{student_uid}_{subject}").update({
+                                                "mark": new_mark,
+                                                "total_mark": new_total
+                                            })
+                                            st.success(f"Updated {subject} for {ename} ({etype})")
+                                            st.session_state["refresh_trigger"] += 1
+                            with col_delete:
+                                if st.button(f"Delete Exam - {eid}", key=f"delete_{eid}"):
+                                    # Delete all marks for this exam
+                                    marks_col = get_marks_collection(eid)
+                                    for doc in marks_col.stream():
+                                        doc.reference.delete()
+                                    # Delete exam document
+                                    db.collection("exams").document(eid).delete()
+                                    st.success(f"Deleted exam '{ename}' ({etype})")
+                                    st.session_state["refresh_trigger"] += 1
+                                    st.experimental_rerun()
                         # Show details in expander for each exam instance
                         with st.expander(f"Details: {edate.strftime('%Y-%m-%d %H:%M') if edate else 'No Date'}"):
                             df = pd.DataFrame(df_rows)
@@ -658,52 +685,6 @@ def account_settings():
             st.error("Current password is incorrect.")
 
 # --- Main App Flow ---
-def edit_marks_page():
-    st.title("✏️ Edit or Delete Marks")
-    student_uid = st.session_state["uid"]
-    all_exams = get_exams_for_student(student_uid)
-    if not all_exams:
-        st.info("No exams found. Enter marks in the dashboard first.")
-        return
-    # Select Exam/Test
-    exam_names = sorted(set([ename for _, ename, _, _ in all_exams]))
-    selected_exam = st.selectbox("Select Exam/Test", exam_names, key="edit_exam_select")
-    # Select Exam Type for selected exam
-    exam_types = sorted(set([etype for eid, ename, edate, etype in all_exams if ename==selected_exam]))
-    selected_type = st.selectbox("Select Exam Type", exam_types, key="edit_exam_type_select")
-    # Get exam IDs matching selection
-    matching_exams = [(eid, edate) for eid, ename, edate, etype in all_exams if ename==selected_exam and etype==selected_type]
-    if not matching_exams:
-        st.info("No matching exam instances found.")
-        return
-    eid, edate = matching_exams[-1]  # take the latest
-    marks_dict = get_marks_for_student_exam(eid, student_uid)
-    if not marks_dict:
-        st.info("No marks found for this exam.")
-        return
-    # Display subjects and allow edit/delete
-    for subject, v in marks_dict.items():
-        col1, col2, col3, col4 = st.columns([2,2,2,1])
-        with col1:
-            st.markdown(f"**{subject}**")
-        with col2:
-            new_mark = st.number_input(f"Marks ({subject})", min_value=0.0, max_value=1000.0, step=0.1, format="%.2f", value=v["mark"], key=f"mark_{subject}")
-        with col3:
-            new_total = st.number_input(f"Total Marks ({subject})", min_value=1.0, max_value=1000.0, step=0.1, format="%.2f", value=v["total_mark"], key=f"total_{subject}")
-        with col4:
-            delete_btn = st.button(f"Delete {subject}", key=f"delete_{subject}")
-            if delete_btn:
-                db.collection("exams").document(eid).collection("marks").document(f"{student_uid}_{subject}").delete()
-                st.success(f"Deleted {subject} mark.")
-                st.experimental_rerun()
-        # Update button
-        if st.button(f"Update {subject}", key=f"update_{subject}"):
-            db.collection("exams").document(eid).collection("marks").document(f"{student_uid}_{subject}").update({
-                "mark": new_mark,
-                "total_mark": new_total
-            })
-            st.success(f"Updated {subject} mark.")
-            st.experimental_rerun()
 
 def main():
     st.set_page_config(page_title="Markify v2", layout="wide")
