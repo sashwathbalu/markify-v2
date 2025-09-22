@@ -17,8 +17,7 @@ if "refresh_trigger" not in st.session_state:
 import os
 
 if not firebase_admin._apps:
-    firebase_key_dict = json.loads(os.environ["FIREBASE_KEY"])
-    cred = credentials.Certificate(firebase_key_dict)
+    cred = credentials.Certificate("firebase_key.json")
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
