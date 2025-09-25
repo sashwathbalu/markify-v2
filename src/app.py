@@ -247,10 +247,14 @@ def dashboard_page():
     with st.container():
         st.markdown("### 📝 Enter Exam/Test Details")
         col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 1, 1, 2])
-        with col1:
-            exam_name = st.text_input("**Exam/Test Name**", key="v2_exam_name")
         with col2:
             exam_type = st.selectbox("**Exam/Test Type**", ["Exam", "Class Test", "Others"], key="v2_exam_type")
+        with col1:
+            if exam_type == "Class Test":
+                class_test_number = st.text_input("Class Test Number", key="v2_exam_number")
+                exam_name = f"Class Test {class_test_number}" if class_test_number.strip() else ""
+            else:
+                exam_name = st.text_input("**Exam/Test Name**", key="v2_exam_name")
         with col3:
             all_subjects = get_all_subjects()
             if not all_subjects:
@@ -270,7 +274,10 @@ def dashboard_page():
         if submitted:
             student_uid = st.session_state["uid"]
             if not exam_name.strip():
-                st.warning("Exam/Test name cannot be empty.")
+                if exam_type == "Class Test":
+                    st.warning("Please enter the Class Test number.")
+                else:
+                    st.warning("Exam/Test name cannot be empty.")
             else:
                 now_dt = datetime.datetime.combine(exam_date_input, datetime.datetime.min.time())
                 eid = exam_id_from_fields(exam_name, exam_type, student_uid, now_dt)
