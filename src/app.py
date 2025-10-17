@@ -14,20 +14,59 @@ if "refresh_trigger" not in st.session_state:
     st.session_state["refresh_trigger"] = 0
 
 # --- Firebase Initialization ---
+import firebase_admin
+from firebase_admin import credentials, firestore
 import os
 import json
-import firebase_admin
-from firebase_admin import credentials
 
+# --- Firebase key as Python dictionary ---
+firebase_key_dict = {
+    "type": "service_account",
+    "project_id": "markify-7e6af",
+    "private_key_id": "109fc85f9dedb6eecd27233ee9bb4fa89bb4f795",
+    "private_key": """-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDSi1gikDZ8/k02
+G87czksdfnBlTly/alWM0kUM0syG4rA5qEdhMW9BOZ4/ck70kBnGR9imEimapXc6
+1rNHv+WnyVAmi7HHS3OS5Hm/9XTRQ3P9moJKDS49sE/diqiOcxUkiicCpQMaXjxR
+ymKBTIkf/8NaHnb2HW/Bfh6uBC2TiAg2QJg0XAs9EVWgifvef7KIBOZX20/qI1kc
+XNR8wVqWoyZWYdPY92bmKi1HTxjBw6FPrSs0oFE8oSp4bi7nkw3z64hK08lVzX+H
+GsFlHV3FICfEtcaLVaFCC3kT587VFZIuIR+xkVV0hF41Sf1tawq9D08tA5K+wqUY
+3IQqljTjAgMBAAECggEAGzweLv5jpgCJQVYQiLyAt/R6mogr9DDPlzM97l44Sbx6
+GkM71IU+BHxtDXz+XKFlTCJQEo9n5VLBHRHXyBC5Jt6iKRJJ8WM/tIEshJm+PjGR
+B/2cG/Mfh6hOdHRywFZ/piXezPdGcvs8p0HcQyiA1mxRu08UiVqecbOcSVtN//bN
+Gffx7PgTPgUlj32IMnHCN6tXdYT7IP1b+BUbA5ODybQLOxA8t9DmlYZTFt3Jzb8y
+Ro7f8xasxQp1zMn2z+2MXZ/LeQlUyvaLIOrMgMggUIs/vD3ZYT4aN1glCRS/wN88
+QQ6Jeg5pn7tgJOaNCQouxVdATfhTxpil9XKTaJ6ycQKBgQD2Uii4zlsWIgHTSN5i
+IPV2D9I39mwQb4bc939dmCzNC9Sn67NBUdLW/58wdGaiaVl3R988UBP2K+a2T39g
+ie/ihlryMiN3OyfUAJAR5hHCRCN/e+Hdo09svmys3O4B9yDuTnSO16KSW0++MqLd
++xshvrw6zLRnsxsoPEQJqD45cwKBgQDa0Us6EbzD0gQXj0bABDveXGY5fW31yFr1
+GihllY1mceIzIYOfd0kWz31lLlHgfSKMyLO4sHBGuIOmYtQnWKD4sNrx5vWRpWE5
+dJONCdRbqTkqNbmqF7Tt+WUjmYg3kQcSaxKKw3/Lr3BE3Z/sMtCtp40Vsr6ilcAF
+iHbQBdX60QKBgG+qQ0e0VNqtxAISkK4PnvdMqNIx5j91L8BQeu7lI7o42MjfMz4z
+Z8+LxpDi0/xgoexPKsZezw3UTRzs4SPUpGke22/chvNwX9feAXH7yKU22pjagkRF
+2qXDleSvqz482DLwYiq3Wr3ao0XoEqlrQpuDqjVFw6sXKQKOf5GZMcw9AoGBAI5G
+T1dueQIJ58c5zZLELfkiswTmXTzWDO4ZF/MVDl9x5NXCEMb61HcUakADohEIzBIl
+3VVUw2v4RQFGeRMsOV36ACIRPdJ5aYHmHpoxrfX7TcP4MsQ5rdadtfkztrIKhkKf
+g+rdupZBeAoO4BC/6Zc/vihBlFo6bCQs2rPfV4ZBAoGBAJB0IZgcvX9rKMtKOScw
+p4CdiGGqPtqR+e/CoehIzhwSuLRcv2P9iNZUrOi1KoKKyj4twv8f+5yeYrkNDOlw
+1okInVCOSWxgbYQs74Nds7SLsWuNW1SqhawKL9IdTPnBnVJqZ5efNY+66i6xcEzz
+xegc+fNF/MoQIzuMMoMssz76
+-----END PRIVATE KEY-----""",
+    "client_email": "firebase-adminsdk-fbsvc@markify-7e6af.iam.gserviceaccount.com",
+    "client_id": "105380457781434182722",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40markify-7e6af.iam.gserviceaccount.com",
+    "universe_domain": "googleapis.com"
+}
+
+# --- Initialize Firebase ---
 if not firebase_admin._apps:
-    firebase_key_json = os.environ.get("FIREBASE_KEY")
-    if not firebase_key_json:
-        raise ValueError("FIREBASE_KEY environment variable not set!")
-    firebase_key_dict = json.loads(firebase_key_json)
     cred = credentials.Certificate(firebase_key_dict)
     firebase_admin.initialize_app(cred)
-db = firestore.client()
 
+db = firestore.client()
 # --- Utility Functions ---
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
