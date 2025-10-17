@@ -1,4 +1,4 @@
-# ------------- Markify v2 (Photo Upload Edition) -------------
+# ------------- Markify v2 (Photo Upload Coming Soon Edition) -------------
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -7,12 +7,7 @@ import pandas as pd
 import plotly.express as px
 import json
 import os
-
-# --- OCR Dependencies ---
-import easyocr
-from PIL import Image
-import io
-import re
+import numpy as np
 
 # --- Session-State Trigger for Auto-refresh ---
 if "refresh_trigger" not in st.session_state:
@@ -144,25 +139,6 @@ def logout_user():
 def logged_in():
     return "uid" in st.session_state
 
-# --- OCR Processing ---
-def ocr_extract_marks(image_bytes):
-    reader = easyocr.Reader(['en'], gpu=False)
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    result = reader.readtext(np.array(img))
-    marks_data = []
-    # Regex pattern to extract: Subject: mark / total
-    pattern = re.compile(r"(\w+)\s*[:\-]\s*(\d+\.?\d*)\s*/\s*(\d+\.?\d*)")
-    for _, text, _ in result:
-        match = pattern.search(text)
-        if match:
-            subject, mark, total = match.groups()
-            marks_data.append({
-                "subject": subject.strip(),
-                "mark": float(mark),
-                "total": float(total)
-            })
-    return marks_data
-
 # --- Pages ---
 def signup_page():
     st.title("Sign Up to Markify")
@@ -194,7 +170,7 @@ def login_page():
         try:
             users_ref = db.collection("users")
             query = users_ref.where("name", "==", name).limit(1).stream()
-            user_docs = list(query)  # Fully evaluate the stream
+            user_docs = list(query)
             if not user_docs:
                 st.error("Invalid credentials.")
                 return
@@ -202,7 +178,7 @@ def login_page():
             user_doc = user_docs[0]
             user = user_doc.to_dict()
             
-            if user.get("password_hash") == hash_password(pw):
+            if user.get("password_hash") == hashlib.sha256(pw.encode()).hexdigest():
                 user["uid"] = user_doc.id
                 login_user(user)
                 st.success(f"Welcome back, {user.get('name','User')}!")
@@ -261,36 +237,12 @@ def dashboard_page():
             st.dataframe(df, hide_index=True)
 
 def photo_upload_page():
-    st.title("📸 Photo Upload - Auto Mark Entry")
-    uploaded_file = st.file_uploader("Upload your mark sheet (PNG/JPG/JPEG)", type=["png","jpg","jpeg"])
-    if uploaded_file:
-        st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
-        bytes_data = uploaded_file.read()
-        marks_data = ocr_extract_marks(bytes_data)
-        if not marks_data:
-            st.warning("No marks detected. Please check the image.")
-            return
-        st.markdown("### Detected Marks (Confirm/Edit Before Submission)")
-        df = pd.DataFrame(marks_data)
-        st.dataframe(df)
-
-        # Select Exam Name & Type
-        exam_type = st.selectbox("Exam/Test Type", ["Exam", "Class Test", "Others"], key="photo_exam_type")
-        exam_name = st.text_input("Exam/Test Name", key="photo_exam_name")
-        if st.button("Submit Marks from Photo"):
-            uid = st.session_state["uid"]
-            eid = create_exam(exam_name, exam_type, uid)
-            for _, row in df.iterrows():
-                subj = row["subject"]
-                mark = row["mark"]
-                total = row["total"]
-                add_mark(eid, uid, subj, mark, total)
-            st.success("Marks added successfully via photo upload.")
-            st.session_state["refresh_trigger"] += 1
+    st.title("📸 Photo Upload - Coming Soon")
+    st.info("This feature will be available in a future version.")
 
 def statistics_page():
     st.title("📈 Statistics & Improvement (Coming Soon)")
-    st.info("This section will display overall improvement in future versions. All marks are stored and visible in the Dashboard for now.")
+    st.info("All marks are stored and visible in the Dashboard for now.")
 
 def account_settings():
     st.title("⚙️ Account Settings")
@@ -304,7 +256,7 @@ def account_settings():
     new_pw = st.text_input("New Password", type="password")
     if st.button("Change Password"):
         data = user_data(st.session_state["uid"])
-        if data and data["password_hash"] == hash_password(old_pw):
+        if data and data["password_hash"] == hashlib.sha256(old_pw.encode()).hexdigest():
             update_password(st.session_state["uid"], new_pw)
         else:
             st.error("Incorrect password.")

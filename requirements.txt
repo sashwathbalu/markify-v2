@@ -1,8 +1,5 @@
-streamlit>=1.30
-firebase-admin>=6.1.0
-pandas>=2.1
-plotly>=5.18
-Pillow>=10.0
-easyocr>=1.6
-opencv-python-headless>=4.8
-numpy>=1.25
+streamlit>=1.27.0
+firebase-admin>=6.0.0
+pandas>=2.0
+plotly>=5.15.0
+numpy>=1.25.0
