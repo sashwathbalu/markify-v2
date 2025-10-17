@@ -14,9 +14,17 @@ if "refresh_trigger" not in st.session_state:
     st.session_state["refresh_trigger"] = 0
 
 # --- Firebase Initialization ---
+import os
+import json
+import firebase_admin
+from firebase_admin import credentials
+
 if not firebase_admin._apps:
-    cred_path = os.path.join(os.path.dirname(__file__), "firebase_key.json")
-    cred = credentials.Certificate(cred_path)
+    firebase_key_json = os.environ.get("FIREBASE_KEY")
+    if not firebase_key_json:
+        raise ValueError("FIREBASE_KEY environment variable not set!")
+    firebase_key_dict = json.loads(firebase_key_json)
+    cred = credentials.Certificate(firebase_key_dict)
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 
