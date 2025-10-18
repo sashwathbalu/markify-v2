@@ -1,4 +1,6 @@
-# ------------- Markify v2 (Photo Upload Coming Soon Edition) -------------
+#
+# ------------- Markify v2 (Hybrid AI-based OCR Parsing Edition) -------------
+# This version now supports hybrid AI-based OCR parsing (OpenAI GPT-4o-mini, with local fallback).
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -8,6 +10,11 @@ import plotly.express as px
 import json
 import os
 import numpy as np
+# --- OCR Dependencies ---
+import easyocr
+from PIL import Image
+import io
+import re
 
 # --- Session-State Trigger for Auto-refresh ---
 if "refresh_trigger" not in st.session_state:
@@ -125,6 +132,126 @@ def add_subject(subject_name):
 def get_all_subjects():
     docs = get_subjects_collection().stream()
     return sorted([doc.to_dict()["name"] for doc in docs])
+
+# --- OCR helper functions ---
+
+def _group_ocr_lines(result):
+    """Group OCR detections into text lines by approximate Y coordinate and sort tokens by X."""
+    lines = {}
+    for bbox, text, _ in result:
+        # bbox is [(x1,y1),(x2,y2),(x3,y3),(x4,y4)]
+        y = (bbox[0][1] + bbox[2][1]) / 2.0
+        x = bbox[0][0]
+        key = int(round(y / 10.0) * 10)
+        lines.setdefault(key, []).append((x, text))
+    grouped = []
+    for k in sorted(lines.keys()):
+        row = [t for _, t in sorted(lines[k], key=lambda x: x[0])]
+        # collapse tokens that are just separators
+        grouped.append(row)
+    return grouped
+
+
+def _parse_table_from_lines(lines):
+    """Parse a simple marksheet table from grouped OCR lines.
+    Heuristic:
+      - Find the first line that has 2+ numeric tokens: treat it as the 'max marks' header row.
+      - Following lines: first token = subject, remaining numeric tokens = marks per column.
+    Returns a dict: {subject: {test_name: {'mark': val, 'total': total}}}
+    """
+    # find max row index
+    max_idx = None
+    for i, row in enumerate(lines):
+        # count numeric tokens in row
+        numcount = sum(1 for t in row if re.search(r"\d", t))
+        if numcount >= 2:
+            max_idx = i
+            break
+    if max_idx is None:
+        return None
+
+    header_row = lines[max_idx]
+    # extract numeric values from header for totals
+    header_nums = [float(x) for x in re.findall(r"\d+\.?\d*", " ".join(header_row))]
+    # create test names from header tokens containing letters, else generic Test 1..N
+    test_names = []
+    for tok in header_row:
+        if re.search(r"[A-Za-z]", tok):
+            cleaned = re.sub(r"[^A-Za-z0-9 \-]", "", tok).strip()
+            if cleaned:
+                test_names.append(cleaned)
+    if not test_names:
+        test_names = [f"Test {i+1}" for i in range(len(header_nums))]
+
+    totals = header_nums[:len(test_names)] if header_nums else [None] * len(test_names)
+
+    data = {}
+    for row in lines[max_idx + 1 :]:
+        if not row:
+            continue
+        subj = row[0]
+        nums = re.findall(r"\d+\.?\d*", " ".join(row[1:]))
+        if not nums:
+            continue
+        vals = [float(x) for x in nums]
+        data[subj] = {}
+        for i, test in enumerate(test_names):
+            if i < len(vals):
+                data[subj][test] = {"mark": vals[i], "total": totals[i] if i < len(totals) else None}
+    return data
+
+
+# --- AI-based marksheet parsing ---
+def ai_parse_marksheet(ocr_text):
+    """
+    Try to parse OCR text into a marksheet JSON structure.
+    Uses remote LLM (like GPT) if available; otherwise falls back to rule-based parsing.
+    """
+    try:
+        import openai
+        openai.api_key = os.getenv("OPENAI_API_KEY", "")
+        if not openai.api_key:
+            raise RuntimeError("No API key found, fallback to local.")
+
+        prompt = f"""
+        You are a marksheet parser. Given the following OCR text lines, extract subjects,
+        marks, and totals into a JSON structure.
+        OCR text:
+        {ocr_text}
+        Return JSON like:
+        {{
+          "Mathematics": {{"Class Test 1": [9.5, 10], "Unit Test 1": [17.5, 20]}},
+          "Physics": {{"Class Test 1": [8.5, 10]}}
+        }}
+        """
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800
+        )
+        text = response.choices[0].message.content.strip()
+        parsed = json.loads(text)
+        # Convert parsed format to match local parser: {subject: {test: {"mark": val, "total": total}}}
+        out = {}
+        for subject, tests in parsed.items():
+            out[subject] = {}
+            for test, vals in tests.items():
+                if isinstance(vals, list) and len(vals) == 2:
+                    out[subject][test] = {"mark": vals[0], "total": vals[1]}
+                elif isinstance(vals, dict) and "mark" in vals and "total" in vals:
+                    out[subject][test] = {"mark": vals["mark"], "total": vals["total"]}
+                else:
+                    # fallback
+                    out[subject][test] = {"mark": None, "total": None}
+        return out
+    except Exception as e:
+        st.info(f"⚙️ Falling back to local parser (no AI available): {e}")
+        try:
+            lines = _group_ocr_lines(ocr_text)
+            return _parse_table_from_lines(lines)
+        except Exception as inner_e:
+            st.error(f"Local parser failed: {inner_e}")
+            return None
 
 # --- Exam/Mark Storage ---
 def exam_id_from_fields(exam_name, exam_type, student_uid):
@@ -249,7 +376,19 @@ def dashboard_page():
         if not all_subjects:
             st.info("No subjects found. Ask admin to add.")
             return
-        subj = st.selectbox("Subject", all_subjects)
+        
+        # Filter subjects based on exam type
+        if exam_type == "Class Test":
+            available_subjects = ["Physics", "Chemistry", "Biology"]
+        elif exam_type == "Exam":
+            available_subjects = ["Science"]
+        else:
+            available_subjects = all_subjects  # fallback
+
+        # Only show subjects that exist in Firestore
+        available_subjects = [s for s in available_subjects if s in all_subjects]
+
+        subj = st.selectbox("Subject", available_subjects)
     with c4:
         mark = st.number_input("Marks", 0.0, 1000.0, 0.0, 0.5)
     with c5:
@@ -284,8 +423,89 @@ def dashboard_page():
             st.dataframe(df, hide_index=True)
 
 def photo_upload_page():
-    st.title("📸 Photo Upload - Coming Soon")
-    st.info("This feature will be available in a future version.")
+    st.title("📸 Photo Upload - Auto Mark Entry (Preview before Save)")
+    st.markdown("Upload a clear photo of the marksheet. The app will attempt to parse subjects and marks and show them for review before saving to your account.")
+
+    uploaded_file = st.file_uploader("Upload your mark sheet (PNG/JPG/JPEG)", type=["png", "jpg", "jpeg"])
+    if not uploaded_file:
+        st.info("Upload an image to start OCR (Coming Soon if unavailable).")
+        return
+
+    # show image (compatible with older Streamlit versions)
+    try:
+        st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+    except TypeError:
+        st.image(uploaded_file, caption="Uploaded Image")
+
+    bytes_data = uploaded_file.read()
+    reader = None
+    try:
+        reader = easyocr.Reader(["en"], gpu=False)
+    except Exception as e:
+        st.error(f"OCR engine failed to initialize: {e}")
+        return
+
+    try:
+        img = Image.open(io.BytesIO(bytes_data)).convert("RGB")
+        ocr_result = reader.readtext(np.array(img), detail=1)
+    except Exception as e:
+        st.error(f"OCR failed: {e}")
+        return
+
+    ocr_text_lines = [t for _, t, _ in ocr_result]
+    parsed = ai_parse_marksheet(ocr_text_lines)
+
+    if not parsed:
+        st.warning("No table-like data detected. Try a clearer crop or different photo.")
+        st.write("Raw OCR output (for debugging):")
+        st.write([t for _, t, _ in ocr_result])
+        return
+
+    # Build a preview dataframe where columns are Test names
+    # collect all test names
+    test_names = []
+    for subj, d in parsed.items():
+        for tn in d.keys():
+            if tn not in test_names:
+                test_names.append(tn)
+    rows = []
+    for subj, d in parsed.items():
+        row = {"Subject": subj}
+        for tn in test_names:
+            info = d.get(tn)
+            if info:
+                val = info.get("mark")
+                total = info.get("total")
+                row[tn] = f"{val} / {total if total is not None else ''}"
+            else:
+                row[tn] = ""
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    st.markdown("### Detected Marks — review and edit before saving")
+    st.dataframe(df, use_container_width=True)
+
+    if st.button("Save detected marks to my account"):
+        uid = st.session_state.get("uid")
+        if not uid:
+            st.error("You must be logged in to save marks.")
+            return
+        # For each test create an exam and save marks
+        for tn in test_names:
+            # determine exam type heuristically
+            etype = "Exam"
+            if re.search(r"class", tn, re.I):
+                etype = "Class Test"
+            elif re.search(r"unit", tn, re.I):
+                etype = "Unit Test"
+            eid = create_exam(tn, etype, uid)
+            for subj, d in parsed.items():
+                info = d.get(tn)
+                if not info:
+                    continue
+                add_mark(eid, uid, subj, info.get("mark"), info.get("total") or 100)
+        st.success("Detected marks saved successfully.")
+        st.session_state["refresh_trigger"] += 1
 
 def statistics_page():
     st.title("📈 Statistics & Improvement (Coming Soon)")
