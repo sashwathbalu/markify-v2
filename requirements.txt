@@ -3,8 +3,9 @@ firebase-admin==6.3.0
 plotly==5.24.0
 pandas==2.2.3
 numpy==1.26.4
+Pillow==9.5.0
 easyocr==1.7.2
-Pillow==9.5.0	
 opencv-python-headless==4.10.0.84
-torch==2.3.1
-torchvision==0.18.1
+torch==2.3.1+cpu
+torchvision==0.18.1+cpu
+-f https://download.pytorch.org/whl/torch_stable.html
