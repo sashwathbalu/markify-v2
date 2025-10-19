@@ -257,14 +257,14 @@ def dashboard_page():
             return
         
         # Filter subjects based on exam type
+        available_subjects = all_subjects.copy()
         if exam_type == "Class Test":
-            available_subjects = ["Physics", "Chemistry", "Biology"]
+            replacements = ["Physics", "Chemistry", "Biology"]
+            available_subjects = [s for s in available_subjects if s not in replacements] + [s for s in replacements if s in all_subjects]
         elif exam_type == "Exam":
-            available_subjects = ["Science"]
-        else:
-            available_subjects = all_subjects  # fallback
-
-        # Only show subjects that exist in Firestore
+            replacements = ["Science"]
+            available_subjects = [s for s in available_subjects if s not in replacements] + [s for s in replacements if s in all_subjects]
+        # Only show subjects that exist in Firestore (should always be true, but keep for safety)
         available_subjects = [s for s in available_subjects if s in all_subjects]
 
         subj = st.selectbox("Subject", available_subjects)
